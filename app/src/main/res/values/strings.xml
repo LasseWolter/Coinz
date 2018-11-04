@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">Coinz</string>
     <string name="mapbox_access_token">pk.eyJ1IjoibGFmbG93IiwiYSI6ImNqbnEwdHRhcjFrYnEzcG1xcGx5cWRkdzMifQ.9k2-XeSRzm6udOTGuRW2iA</string>
+    <string name="map_centre_Lat">55.9442</string>
+    <string name="map_centre_Lng">-3.1883</string>
 </resources>
