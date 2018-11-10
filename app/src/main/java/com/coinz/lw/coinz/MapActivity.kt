@@ -1,11 +1,13 @@
 package com.coinz.lw.coinz
 
+import android.annotation.SuppressLint
 import android.location.Location
 import android.os.AsyncTask
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.util.Log
+import com.google.gson.JsonObject
 import com.mapbox.android.core.location.LocationEngine
 import com.mapbox.android.core.location.LocationEngineListener
 import com.mapbox.android.core.location.LocationEnginePriority
@@ -28,6 +30,15 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.MalformedURLException
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.Exception
+
+enum class Currency {
+    SHIL, DOLR, QUID, PENY
+}
+
+class Coin(val id: String, val value: Double, val currency: Currency, val coordinates: LatLng)
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener,
         LocationEngineListener {
@@ -40,6 +51,9 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     private lateinit var originLocation: Location
 
     private var locationEngine: LocationEngine? = null
+
+    private var coins = mutableListOf<Coin>()
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,7 +104,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
         val lastLocation = locationEngine?.lastLocation
         if (lastLocation != null) {
-            originLocation = lastLocation!!
+            originLocation = lastLocation
             setCameraPosition(lastLocation)
         } else {
             locationEngine?.addLocationEngineListener(this)
@@ -102,37 +116,68 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     private fun initializeLocationComponent() {
         val locationComponent = map.locationComponent
 
-        locationComponent?.activateLocationComponent(this)
-        locationComponent?.isLocationComponentEnabled = true
-        locationComponent?.cameraMode = CameraMode.TRACKING
-        locationComponent?.renderMode = RenderMode.NORMAL
+        locationComponent.activateLocationComponent(this)
+        locationComponent.isLocationComponentEnabled = true
+        locationComponent.cameraMode = CameraMode.TRACKING
+        locationComponent.renderMode = RenderMode.NORMAL
     }
 
+    @SuppressLint("SimpleDateFormat")
     private fun downloadJson() {
-        val url_str = "http://homepages.inf.ed.ac.uk/stg/coinz/2018/10/03/coinzmap.geojson"
-        DownloadFileTask(DownloadCompleteRunner).execute(url_str)
+        val df = SimpleDateFormat("yyyy/MM/d")  // Choose format that matches the URL
+        val date = df.format(Calendar.getInstance().time)
+        val urlStr = "http://homepages.inf.ed.ac.uk/stg/coinz/" + date + "/coinzmap.geojson"
+
+        Log.d(tag, "[DownloadJson] Trying to download map for date: " + date)
+        DownloadFileTask(DownloadCompleteRunner).execute(urlStr)
     }
 
+    // Add markers to the map and add each coin to list of coins
     private fun addMarkersFromGeoJson() {
         try {
-            val jsonStr = MapActivity.DownloadCompleteRunner.result
+            val jsonStr = DownloadCompleteRunner.result
             val featureCollection = FeatureCollection.fromJson(jsonStr)
-            var features= featureCollection.features()
+            val features = featureCollection.features()
 
-            if (features == null) {
-                Log.d(tag, "[addMarkersFromGeoJson] features is null")
-            } else {
-                for (feature in features) {
-                    val point = feature.geometry() as Point
-                    val coordinates = point.coordinates()
-                    val pos = LatLng(coordinates[1], coordinates[0])
-                    map.addMarker(MarkerOptions().position(pos))
+            features?.let {  feats->
+                for (feature in feats) {
+                    if (feature.geometry() is Point) {  // We are only interested in points
+                        // Extract Point coordinates and display marker on map
+                        val point = feature.geometry() as Point
+                        val coordinates = point.coordinates()
+                        val pos = LatLng(coordinates[1], coordinates[0])
+                        map.addMarker(MarkerOptions().position(pos))
+                        Log.d(tag, "[addMarkersFromGeoJson] Added marker at $pos")
 
+                        // Create Coin instance from Point properties and add it to coins list
+                        val props = feature.properties()
+                        if (props == null) {
+                            Log.d(tag, "[addMarkersFromGeoJson] properties are null - no Coin instance created for coordinates: " + pos.toString())
+                        } else {
+                            addCoinToList(props, pos)
+                        }
+
+                    }
                 }
             }
 
         } catch (exception: MalformedURLException) {
             Log.d(tag, exception.toString())
+        }
+    }
+
+    private fun addCoinToList(props: JsonObject, pos: LatLng) {
+        try {
+            val id = props.get("id").asString
+            val value = props.get("value").asDouble
+            val curStr = props.get("currency").asString
+            val currency = Currency.valueOf(curStr)
+            val coin = Coin(id, value, currency, pos)
+            coins.add(coin)
+            Log.d(tag, "[addMarkersFromGeoJson] Added Coin instance to list: [id: $id, " +
+                    "value: $value, currency: $curStr, coordinates: $pos]")
+        } catch (e: Exception) {
+            Log.d(tag, "[addMarkersFromGeoJson] Problem when parsing Json: $e. Coin Instance not created")
         }
     }
 
@@ -142,13 +187,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     }
 
     override fun onExplanationNeeded(permissionsToExplain: MutableList<String>?) {
-        Log.d(tag,"[onExplanationNeeded] Permissions: $permissionsToExplain")
+        Log.d(tag, "[onExplanationNeeded] Permissions: $permissionsToExplain")
         // Present toast or dialog to explain why the need to grant permission
     }
 
     override fun onPermissionResult(granted: Boolean) {
         Log.d(tag, "[onPermissionResult] granted == $granted")
-        if(granted) {
+        if (granted) {
             enableLocation()
         }
     }
@@ -160,7 +205,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
     override fun onLocationChanged(location: Location?) {
         location?.let {
-            originLocation = location!!
+            originLocation = location
             setCameraPosition(location)
         }
     }
@@ -216,19 +261,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         mapView.onLowMemory()
     }
 
-    // Classes needed for network download
-    interface DownloadCompleteListener {
-        fun downloadComplete(result: String)
-    }
-
-    object DownloadCompleteRunner : DownloadCompleteListener {
-        var result: String = ""
-        override fun downloadComplete(result: String) {
-            this.result = result
-        }
-    }
-
-    inner class DownloadFileTask(private val caller : DownloadCompleteListener) :
+    // Used to download daily Json files from server
+    inner class DownloadFileTask(private val caller: DownloadCompleteListener) :
             AsyncTask<String, Void, String>() {
 
         override fun doInBackground(vararg urls: String): String = try {
@@ -260,8 +294,21 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
             super.onPostExecute(result)
 
             caller.downloadComplete(result)
+            Log.d(tag, "[onPostExecute] Map download succeeded")
             addMarkersFromGeoJson()
         }
     } // end class DownloadFileTask
 
+}
+
+// Classes needed for network download
+interface DownloadCompleteListener {
+    fun downloadComplete(result: String)
+}
+
+object DownloadCompleteRunner : DownloadCompleteListener {
+    var result: String = ""
+    override fun downloadComplete(result: String) {
+        this.result = result
+    }
 }
