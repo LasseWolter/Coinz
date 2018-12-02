@@ -8,11 +8,30 @@
 
     <com.mapbox.mapboxsdk.maps.MapView
         android:id="@+id/map_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        mapbox:layout_constraintBottom_toBottomOf="parent"
+        mapbox:layout_constraintEnd_toEndOf="parent"
+        mapbox:layout_constraintStart_toStartOf="parent"
+        mapbox:layout_constraintTop_toTopOf="parent"
         mapbox:mapbox_cameraTargetLat="@string/map_centre_Lat"
         mapbox:mapbox_cameraTargetLng="@string/map_centre_Lng"
-        mapbox:mapbox_styleUrl="@string/mapbox_style_mapbox_streets"
         mapbox:mapbox_cameraZoom="16"
-        />
+        mapbox:mapbox_styleUrl="@string/mapbox_style_mapbox_streets">
+
+    </com.mapbox.mapboxsdk.maps.MapView>
+
+    <TextView
+        android:id="@+id/gold_counter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="@color/colorPrimary"
+        android:textColor="@color/colorAccent"
+        android:text="0"
+        android:textAppearance="@style/TextAppearance.AppCompat.Body2"
+        android:textSize="24sp"
+        mapbox:layout_constraintBottom_toBottomOf="parent"
+        mapbox:layout_constraintEnd_toEndOf="parent" />
 </android.support.constraint.ConstraintLayout>

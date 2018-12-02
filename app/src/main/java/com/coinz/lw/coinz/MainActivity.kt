@@ -3,21 +3,38 @@ package com.coinz.lw.coinz
 import android.os.AsyncTask
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
+import com.mapbox.geojson.Feature
+import com.mapbox.geojson.FeatureCollection
 import kotlinx.android.synthetic.main.activity_main.*
+import org.jetbrains.anko.*
+import org.jetbrains.anko.sdk25.coroutines.onClick
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), AnkoLogger{
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         val url = "http://homepages.inf.ed.ac.uk/stg/coinz/2018/10/03/coinzmap.geojson"
+        debug("testtesttest")
+        test_conn.onClick {
+            Log.d("hello", "hello")
+            debug("buttonClicke")
+            downloadMap(url)
+        }
+    }
 
-        test_conn.setOnClickListener {
-            DownloadFileTask(DonwloadCompleteRunner).execute(url)
+    fun downloadMap(urlStr: String) {
+        doAsync {
+            var result = URL(urlStr).readText()
+            uiThread {
+                Log.d("Request", result)
+                toast("async computation finished")
+            }
         }
     }
 
