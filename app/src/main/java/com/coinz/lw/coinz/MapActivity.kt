@@ -1,10 +1,7 @@
 package com.coinz.lw.coinz
 
 import android.annotation.SuppressLint
-import android.app.Activity
-import android.content.Context
 import android.location.Location
-import android.os.AsyncTask
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.os.PersistableBundle
@@ -17,10 +14,10 @@ import com.mapbox.android.core.location.LocationEnginePriority
 import com.mapbox.android.core.location.LocationEngineProvider
 import com.mapbox.android.core.permissions.PermissionsListener
 import com.mapbox.android.core.permissions.PermissionsManager
-import com.mapbox.geojson.Feature
 import com.mapbox.geojson.FeatureCollection
 import com.mapbox.geojson.Point
 import com.mapbox.mapboxsdk.Mapbox
+import com.mapbox.mapboxsdk.annotations.Marker
 import com.mapbox.mapboxsdk.annotations.MarkerOptions
 import com.mapbox.mapboxsdk.camera.CameraUpdateFactory
 import com.mapbox.mapboxsdk.geometry.LatLng
@@ -35,20 +32,52 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.Exception
+import kotlin.math.roundToInt
+
 
 enum class Currency {
     SHIL, DOLR, QUID, PENY
 }
 
-class Coin(val id: String, val value: Double, val currency: Currency, val location: LatLng)
+class Coin(val id: String, val value: Double, val currency: Currency, val location: LatLng, val marker: Marker, var goldVal: Int = 0)
+
+// The player can pay 25 coins a day into the bank account where they are 'safe' and their value
+// doesn't decay
+class Account() {
+    private val baseTag = "Account"
+    private var coins = mutableListOf<Coin>()
+    private var goldVal: Int = 0
+    private var dailyPayIns: Int = 25
+
+    fun addCoin(coin: Coin) {
+        val tag = "$baseTag [addCoin]"
+        var alreadyCollected = false
+        for (colCoin in coins) {
+            if (coin.id == colCoin.id) {
+                Log.d(tag, "This Coin has already been collected. id: ${coin.id}")
+                alreadyCollected = true
+                break
+            }
+        }
+
+        if (!alreadyCollected && dailyPayIns > 0) {
+            coins.add(coin)
+            goldVal += coin.goldVal
+            Log.d(tag, "Account-Gold Value: $goldVal")
+            dailyPayIns--
+        }
+    }
+
+
+}
 
 // The mapActivity is passed as parameter such that the UI can be updated on coin collection
-class Wallet(val mapActivity: Activity){
+class Wallet(val mapActivity: MapActivity){
     private val baseTag = "WALLET"
     private var rates = hashMapOf<Currency, Double>()
 
     private var coins = mutableListOf<Coin>()
-    private var goldVal: Double = 0.0
+    private var goldVal: Int = 0
 
     override fun toString(): String {
         var result = ""
@@ -63,7 +92,7 @@ class Wallet(val mapActivity: Activity){
         val tag = "$baseTag [updateRates]"
         val parser = JsonParser()
         val obj = parser.parse(jsonStr).asJsonObject
-        var curRates = obj.get("rates").asJsonObject
+        val curRates = obj.get("rates").asJsonObject
 
         enumValues<Currency>().forEach {
             this.rates[it] = curRates.get(it.name).asDouble
@@ -72,15 +101,15 @@ class Wallet(val mapActivity: Activity){
     }
 
     // Convert currency value to Gold value
-    private fun convert(value: Double, currency: Currency): Double {
+    fun convert(value: Double, currency: Currency): Int {
         val tag = "$baseTag [updateRates]"
-        var goldValue = 0.0
+        var goldValue = 0
 
         // If there is no rate then we don't want to add any gold value so we goldValue stays 0.0
         if (rates[currency] == null) {
             Log.d(tag, "No rate available for currency $currency. Is it a valid currency? value of 0.0 returned")
         } else {
-            goldValue = value * rates[currency]!!    // by this point we know that rates[currency] cannot be null
+            goldValue = (value * rates[currency]!!).roundToInt()    // by this point we know that rates[currency] cannot be null
         }
         return goldValue
     }
@@ -88,28 +117,19 @@ class Wallet(val mapActivity: Activity){
     // Only add coin to wallet when no coin with that id is already in the wallet
     fun addCoin(coin: Coin) {
         val tag = "$baseTag [addCoin]"
+        coins.add(coin)
+        // The coin needs to be removed immediately to avoid double collection - cannot wait for alert confirmation
+        mapActivity.map.removeMarker(coin.marker)
+        coin.goldVal = convert(coin.value, coin.currency)
 
-        var alreadyCollected = false
-        for (colCoin in coins) {
-            if (coin.id == colCoin.id) {
-                Log.d(tag, "This Coin has already been collected. id: ${coin.id}")
-                alreadyCollected = true
-                break
+        mapActivity.alert("Congratulations you just found a coin worth ${coin.goldVal}") {
+            isCancelable = false
+            positiveButton("Continue") {
+                goldVal += coin.goldVal
+                mapActivity.gold_counter.text = "$goldVal"
+                Log.d(tag, "New Wallet-Gold Value: $goldVal")
             }
-        }
-        if (!alreadyCollected) {
-            coins.add(coin)
-            val coinVal = convert(coin.value, coin.currency)
-            mapActivity.alert("Congratulations you just found a coin worth %.2f".format(coinVal)) {
-                isCancelable = false
-                positiveButton("Continue") {
-                    goldVal += coinVal
-                    Log.d(tag, "GOLD: $goldVal")
-                    mapActivity.gold_counter.text = "%.2f".format(goldVal)
-                }
-            }.show()
-
-        }
+        }.show()
     }
 
 }
@@ -119,7 +139,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
     private val baseTag = "MAP_ACTIVITY"
     private lateinit var mapView: MapView
-    private lateinit var map: MapboxMap
+    lateinit var map: MapboxMap
 
     private lateinit var permissionManager: PermissionsManager
     private lateinit var originLocation: Location
@@ -225,7 +245,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         doAsync {
             Log.d(tag, "Trying to download map for date: $date")
             try {
-                var result = URL(urlStr).readText()
+                val result = URL(urlStr).readText()
                 uiThread {
                     Log.d(tag, "Successfully downloaded daily map")
                     addMarkersFromGeoJson(result)
@@ -244,14 +264,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     }
 
     // Get Coin properties + create and add a coin instance to the coins list
-    private fun addCoinToList(props: JsonObject, pos: LatLng) {
+    private fun addCoinToList(props: JsonObject, pos: LatLng, marker: Marker) {
         val tag = "$baseTag [addCoinToList]"
         try {
             val id = props.get("id").asString
             val value = props.get("value").asDouble
             val curStr = props.get("currency").asString
             val currency = Currency.valueOf(curStr)
-            val coin = Coin(id, value, currency, pos)
+            val coin = Coin(id, value, currency, pos, marker)
             coins.add(coin)
             Log.d(tag, "Added Coin instance to list: [id: $id, " +
                     "value: $value, currency: $curStr, location: $pos]")
@@ -273,7 +293,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
                     val point = feature.geometry() as Point
                     val coordinates = point.coordinates()
                     val pos = LatLng(coordinates[1], coordinates[0])
-                    map.addMarker(MarkerOptions().position(pos))
+
+                    val marker = map.addMarker(MarkerOptions().position(pos))
                     Log.d(tag, "Added marker at $pos")
 
                     // Create Coin instance from Point properties and add it to coins list
@@ -281,7 +302,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
                     if (props == null) {
                         Log.d(tag, "properties are null - no Coin instance created for location: " + pos.toString())
                     } else {
-                        addCoinToList(props, pos)
+                        addCoinToList(props, pos, marker)
                     }
 
                 }
