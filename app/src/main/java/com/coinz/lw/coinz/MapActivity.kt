@@ -118,8 +118,6 @@ class Wallet(val mapActivity: MapActivity){
     fun addCoin(coin: Coin) {
         val tag = "$baseTag [addCoin]"
         coins.add(coin)
-        // The coin needs to be removed immediately to avoid double collection - cannot wait for alert confirmation
-        mapActivity.map.removeMarker(coin.marker)
         coin.goldVal = convert(coin.value, coin.currency)
 
         mapActivity.alert("Congratulations you just found a coin worth ${coin.goldVal}") {
@@ -347,13 +345,21 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         val tag = "$baseTag [checkCoinCollected]"
 
         Log.d(tag, "Checking if coin collected")
+        coins.removeAll { coin -> isCollected(coin, location) }
+    }
+
+    // Checks if a coin is close enough to be collected, if so, the coin is added to wallet and its marker is removed
+    private fun isCollected(coin: Coin, location: Location): Boolean {
+        val tag = "$baseTag [isCollected]"
+
         val userLoc = LatLng(location.latitude, location.longitude)
-        for (coin in coins) {
-            if (coin.location.distanceTo(userLoc) <= collectionRadius) {
-                wallet.addCoin(coin)
-                Log.d(tag, wallet.toString())
-            }
+        if (coin.location.distanceTo(userLoc) <= collectionRadius) {
+            map.removeMarker(coin.marker)
+            wallet.addCoin(coin)
+            Log.d(tag, "Collected coin $coin and removed corresponding marker.")
+            return true
         }
+        return false
     }
 
     @SuppressWarnings("MissingPermission")  // Permission is already checked in enableLocation()
