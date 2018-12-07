@@ -1,11 +1,13 @@
 package com.coinz.lw.coinz
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.location.Location
-import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.os.PersistableBundle
+import android.support.v7.app.AppCompatActivity
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.mapbox.android.core.location.LocationEngine
@@ -28,10 +30,10 @@ import com.mapbox.mapboxsdk.maps.MapboxMap
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback
 import kotlinx.android.synthetic.main.activity_map.*
 import org.jetbrains.anko.*
+import org.jetbrains.anko.sdk25.coroutines.onClick
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.Exception
 import kotlin.math.roundToInt
 
 
@@ -151,8 +153,20 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val tag = "$baseTag [onCreate]"
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_map)
+
+        logout_button.onClick {
+            // Access Firebase singleton object to logout
+            FirebaseAuth.getInstance().signOut()
+
+            // Switch back to Login Activity and confirm logout to user
+            val logoutIntent = Intent(this@MapActivity, LoginActivity::class.java)
+            startActivity(logoutIntent)
+            longToast("Successfully logged out")
+            Log.d(tag, "User logged out. Switch back to LoginActivity.")
+        }
 
         Mapbox.getInstance(this, getString(R.string.mapbox_access_token))
         mapView = findViewById(R.id.map_view)
