@@ -46,6 +46,7 @@ dependencies {
     implementation "org.jetbrains.anko:anko-commons:$anko_version"
     implementation "org.jetbrains.anko:anko-appcompat-v7:$anko_version"
     implementation "org.jetbrains.anko:anko-sdk25-coroutines:$anko_version"
+    implementation "org.jetbrains.anko:anko-design:$anko_version"
 
     // Mapbox dependencies
     implementation 'com.mapbox.mapboxsdk:mapbox-android-sdk:6.6.2'

@@ -158,14 +158,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         setContentView(R.layout.activity_map)
 
         logout_button.onClick {
-            // Access Firebase singleton object to logout
-            FirebaseAuth.getInstance().signOut()
-
-            // Switch back to Login Activity and confirm logout to user
-            val logoutIntent = Intent(this@MapActivity, LoginActivity::class.java)
-            startActivity(logoutIntent)
-            longToast("Successfully logged out")
-            Log.d(tag, "User logged out. Switch back to LoginActivity.")
+            logout()
         }
 
         Mapbox.getInstance(this, getString(R.string.mapbox_access_token))
@@ -189,6 +182,18 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
             // Make location information available
             enableLocation()
         }
+    }
+
+    private fun logout() {
+        val tag = "$baseTag [logout]"
+        // Access Firebase singleton object to logout
+        FirebaseAuth.getInstance().signOut()
+
+        // Switch back to Login Activity and confirm logout to user
+        val logoutIntent = Intent(this@MapActivity, LoginActivity::class.java)
+        startActivity(logoutIntent)
+        longToast("Successfully logged out")
+        Log.d(tag, "User logged out. Switch back to LoginActivity.")
     }
 
     private fun enableLocation() {
@@ -328,9 +333,8 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     }
 
     override fun onExplanationNeeded(permissionsToExplain: MutableList<String>?) {
-        val tag = "$baseTag [onExplanationNeeded]"
-        Log.d(tag, "Permissions: $permissionsToExplain")
-        // Present toast or dialog to explain why the need to grant permission
+        // It's not really needed to display something to the user since the alert asking for the
+        // permission itself is quite expressive
     }
 
     override fun onPermissionResult(granted: Boolean) {
@@ -338,6 +342,12 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         Log.d(tag, "granted == $granted")
         if (granted) {
             enableLocation()
+        } else {
+            alert(getString(R.string.alert_grant_permission)) {
+                isCancelable = false
+                positiveButton("Grant permission") { enableLocation() }
+                negativeButton("Close App") { finish() }
+            }.show()
         }
     }
 

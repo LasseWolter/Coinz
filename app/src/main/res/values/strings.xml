@@ -17,4 +17,6 @@
     <string name="error_field_required">This field is required</string>
     <string name="message_welcome_back">Welcome back to Coinz</string>
     <string name="message_welcome">Welcome to Coinz</string>
+    <!-- Alert Dialog Messages -->
+    <string name="alert_grant_permission">You are not able to play Coinz if Coinz cannot access your location.</string>
 </resources>
