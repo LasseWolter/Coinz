@@ -7,7 +7,11 @@ import android.os.Bundle
 import android.os.PersistableBundle
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.mapbox.android.core.location.LocationEngine
@@ -34,6 +38,7 @@ import org.jetbrains.anko.sdk25.coroutines.onClick
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.collections.HashMap
 import kotlin.math.roundToInt
 
 
@@ -43,15 +48,27 @@ enum class Currency {
 
 class Coin(val id: String, val value: Double, val currency: Currency, val location: LatLng, val marker: Marker, var goldVal: Int = 0)
 
+data class FirebaseCoin(val id: String="", val goldVal: Int=0)
+
+data class UserDoc(val email: String = "",
+                   var gold: Int = 0,
+                   var payInsLeft: Int = 25,
+                   var lastPayIn: Timestamp? = null)
+
 // The player can pay 25 coins a day into the bank account where they are 'safe' and their value
 // doesn't decay
 class Account() {
-    private val baseTag = "Account"
+
+    private val baseTag = "ACCOUNT"
     private var coins = mutableListOf<Coin>()
     private var goldVal: Int = 0
     private var dailyPayIns: Int = 25
 
-    fun addCoin(coin: Coin) {
+    private val db = FirebaseFirestore.getInstance()
+    private val email = FirebaseAuth.getInstance().currentUser?.email
+    private var userRef: DocumentReference = db.document("Users/$email")
+
+    fun payCoinIntoAccount(coin: Coin) {
         val tag = "$baseTag [addCoin]"
         var alreadyCollected = false
         for (colCoin in coins) {
@@ -65,7 +82,24 @@ class Account() {
         if (!alreadyCollected && dailyPayIns > 0) {
             coins.add(coin)
             goldVal += coin.goldVal
-            Log.d(tag, "Account-Gold Value: $goldVal")
+
+            // Update db
+            val data = HashMap<String, Any>()
+            Log.d(tag, "GoldValue in Account: $goldVal")
+            data["gold"] = goldVal
+//            data["coins"] = coins
+
+            val user = FirebaseAuth.getInstance().currentUser
+            Log.d(tag, "Update data for ${user?.email}")
+            db.collection("Users").document(user?.email!!)
+                    .set(data, SetOptions.merge()).addOnSuccessListener {
+                        Log.d(tag, "Updated Gold Value in db")
+                    }
+                    .addOnFailureListener { exception ->
+                        Log.d(tag, "Couldn't update Gold Value in db. $exception")
+                    }
+            val dbCoin = FirebaseCoin(coin.id, coin.goldVal)
+            userRef.collection("Coins").add(dbCoin)
             dailyPayIns--
         }
     }
@@ -80,6 +114,11 @@ class Wallet(val mapActivity: MapActivity){
 
     private var coins = mutableListOf<Coin>()
     private var goldVal: Int = 0
+
+    private var dailyPayIns: Int = 25
+
+    private val db = FirebaseFirestore.getInstance()
+
 
     override fun toString(): String {
         var result = ""
@@ -129,6 +168,10 @@ class Wallet(val mapActivity: MapActivity){
                 mapActivity.gold_counter.text = "$goldVal"
                 Log.d(tag, "New Wallet-Gold Value: $goldVal")
             }
+            negativeButton("Pay into Bank") {
+                mapActivity.account.payCoinIntoAccount(coin)
+                Log.d(tag, "Payed coin into bank account: $goldVal")
+            }
         }.show()
     }
 
@@ -148,8 +191,12 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
     private var coins = mutableListOf<Coin>()
     private var wallet = Wallet(this)
+    var account = Account()
 
     private val collectionRadius = 25
+
+    private var db: FirebaseFirestore? = null
+
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -157,20 +204,18 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_map)
 
-        logout_button.onClick {
-            logout()
-        }
+        val db = FirebaseFirestore.getInstance()
 
         Mapbox.getInstance(this, getString(R.string.mapbox_access_token))
         mapView = findViewById(R.id.map_view)
         mapView.onCreate(savedInstanceState)
         mapView.getMapAsync(this)
 
+        logout_button.onClick { logout() }
     }
 
     override fun onMapReady(mapboxMap: MapboxMap?) {
         val tag = "$baseTag [onMapReady]"
-
 
         if (mapboxMap == null) {
             Log.d(tag, "the returned map is null")

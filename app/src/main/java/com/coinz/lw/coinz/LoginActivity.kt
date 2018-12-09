@@ -12,7 +12,9 @@ import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.*
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.android.synthetic.main.activity_login.*
 import org.jetbrains.anko.longToast
 import org.jetbrains.anko.sdk25.coroutines.onClick
@@ -27,7 +29,14 @@ class LoginActivity : AppCompatActivity() {
      */
     private val baseTag = "LOGIN_ACTIVITY"
 
-    private var mAuth: FirebaseAuth? = null
+    private lateinit var mAuth: FirebaseAuth
+    private lateinit var db: FirebaseFirestore
+
+    // Companion object for user class
+    companion object {
+        private const val USER_KEY = "User"
+        private const val EMAIL_FIELD = "email"
+    }
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,6 +44,7 @@ class LoginActivity : AppCompatActivity() {
         setContentView(R.layout.activity_login)
 
         mAuth = FirebaseAuth.getInstance()
+        db = FirebaseFirestore.getInstance()
 
         // Set up the login form.
         password.setOnEditorActionListener(TextView.OnEditorActionListener { _, id, _ ->
@@ -48,6 +58,21 @@ class LoginActivity : AppCompatActivity() {
         email_sign_up_button.setOnClickListener { attemptSignUp() }
         email_login_button.onClick { attemptLogIn() }
 
+    }
+
+    // Creates a new user in the db
+    private fun createUser(emailStr: String) {
+        val tag = "$baseTag [createUser]"
+        // neither user nor user.email can be zero in this code block
+        val newUser = UserDoc(emailStr)
+        try {
+            val newUserRef = db.collection("Users").document(newUser.email)
+            Tasks.await(newUserRef.set(newUser))
+            Log.d(tag, "Added User to db. User: $newUser")
+
+        } catch (e: Exception) {
+            Log.d(tag, "There was a problem when creating the user. $e")
+        }
     }
 
     /**
@@ -100,11 +125,12 @@ class LoginActivity : AppCompatActivity() {
             // perform the user login attempt.
             showProgress(true)
 
-            mAuth?.createUserWithEmailAndPassword(emailStr, passwordStr)
+            mAuth.createUserWithEmailAndPassword(emailStr, passwordStr)
                     ?.addOnCompleteListener(this) { task ->
                         if (task.isSuccessful) {
+                            createUser(emailStr)
                             Log.d(tag, "Successfully created account with email: $emailStr")
-                            updateUI(mAuth?.currentUser, false)
+                            updateUI(mAuth.currentUser, false)
                         } else {
                             // Reset errors
                             email.error = null
@@ -148,10 +174,10 @@ class LoginActivity : AppCompatActivity() {
         val passwordStr = password.text.toString()
 
         showProgress(true)
-        mAuth?.signInWithEmailAndPassword(emailStr, passwordStr)?.addOnCompleteListener(this) { task ->
+        mAuth.signInWithEmailAndPassword(emailStr, passwordStr)?.addOnCompleteListener(this) { task ->
             if (task.isSuccessful) {
                 Log.d(tag, "Successfully logged in user with email: $emailStr")
-                updateUI(mAuth?.currentUser, true)
+                updateUI(mAuth.currentUser, true)
             } else {
                 val err = task.exception
                 when (err) {
@@ -235,6 +261,6 @@ class LoginActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         //Check if user is signed in (non-null) and update UI
-        updateUI(mAuth?.currentUser, true)
+        updateUI(mAuth.currentUser, true)
     }
 }

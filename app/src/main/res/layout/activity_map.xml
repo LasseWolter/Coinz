@@ -25,15 +25,20 @@
         android:id="@+id/gold_counter"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        style="@android:style/Widget.Button"
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="8dp"
+        android:paddingVertical="2dp"
+        android:paddingHorizontal="6dp"
         android:background="@color/colorPrimary"
         android:textColor="@color/colorAccent"
         android:text="0"
-        android:textAppearance="@style/TextAppearance.AppCompat.Body2"
         android:textSize="24sp"
+        android:clickable="false"
         mapbox:layout_constraintBottom_toBottomOf="parent"
-        mapbox:layout_constraintEnd_toEndOf="parent" />
+        mapbox:layout_constraintEnd_toEndOf="parent"
+        ></TextView>
+
 
     <Button
         android:id="@+id/logout_button"
@@ -44,4 +49,15 @@
         android:text="Logout"
         mapbox:layout_constraintBottom_toBottomOf="parent"
         mapbox:layout_constraintStart_toStartOf="parent" />
+
+    <Button
+        android:id="@+id/payIn_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
+        android:text="Pay in"
+        mapbox:layout_constraintStart_toStartOf="parent"
+        mapbox:layout_constraintTop_toTopOf="parent" />
+
 </android.support.constraint.ConstraintLayout>
