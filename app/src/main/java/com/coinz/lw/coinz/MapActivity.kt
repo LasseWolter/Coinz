@@ -7,9 +7,12 @@ import android.os.Bundle
 import android.os.PersistableBundle
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
-import com.google.firebase.Timestamp
+import com.coinz.lw.coinz.Constants.Companion.COINS
+import com.coinz.lw.coinz.Constants.Companion.USER
+import com.coinz.lw.coinz.Constants.Companion.getCoinsRef
+import com.coinz.lw.coinz.Constants.Companion.getTodaysDate
+import com.coinz.lw.coinz.Constants.Companion.getUserRef
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.gson.JsonObject
@@ -20,6 +23,7 @@ import com.mapbox.android.core.location.LocationEnginePriority
 import com.mapbox.android.core.location.LocationEngineProvider
 import com.mapbox.android.core.permissions.PermissionsListener
 import com.mapbox.android.core.permissions.PermissionsManager
+import com.mapbox.geojson.Feature
 import com.mapbox.geojson.FeatureCollection
 import com.mapbox.geojson.Point
 import com.mapbox.mapboxsdk.Mapbox
@@ -35,38 +39,26 @@ import com.mapbox.mapboxsdk.maps.OnMapReadyCallback
 import kotlinx.android.synthetic.main.activity_map.*
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk25.coroutines.onClick
+import java.lang.reflect.InvocationTargetException
 import java.net.URL
-import java.text.SimpleDateFormat
-import java.util.*
-import kotlin.collections.HashMap
-import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 
 enum class Currency {
     SHIL, DOLR, QUID, PENY
 }
 
-class Coin(val id: String, val value: Double, val currency: Currency, val location: LatLng, val marker: Marker, var goldVal: Int = 0)
-
-data class FirebaseCoin(val id: String="", val goldVal: Int=0)
-
-data class UserDoc(val email: String = "",
-                   var gold: Int = 0,
-                   var payInsLeft: Int = 25,
-                   var lastPayIn: Timestamp? = null)
+class Coin(val id: String, val value: Double, val currency: Currency, val location: LatLng, val marker: Marker, var goldVal: Long = 0, var collectionDate: String = "", var feature: Feature? = null)
 
 // The player can pay 25 coins a day into the bank account where they are 'safe' and their value
 // doesn't decay
-class Account() {
+class Account(val mapActivity: MapActivity) {
 
     private val baseTag = "ACCOUNT"
-    private var coins = mutableListOf<Coin>()
-    private var goldVal: Int = 0
-    private var dailyPayIns: Int = 25
+    var coins = mutableListOf<Coin>()
 
-    private val db = FirebaseFirestore.getInstance()
-    private val email = FirebaseAuth.getInstance().currentUser?.email
-    private var userRef: DocumentReference = db.document("Users/$email")
+    private var db = FirebaseFirestore.getInstance()
+    private var userEmail = FirebaseAuth.getInstance().currentUser?.email ?: ""
 
     fun payCoinIntoAccount(coin: Coin) {
         val tag = "$baseTag [addCoin]"
@@ -79,28 +71,50 @@ class Account() {
             }
         }
 
-        if (!alreadyCollected && dailyPayIns > 0) {
+        if (!alreadyCollected) {
+            // Update account locally
             coins.add(coin)
-            goldVal += coin.goldVal
 
             // Update db
-            val data = HashMap<String, Any>()
-            Log.d(tag, "GoldValue in Account: $goldVal")
-            data["gold"] = goldVal
-//            data["coins"] = coins
+            doAsync {
+                try {
+                    val dbCoin = CoinModel(coin.id, coin.goldVal, getTodaysDate())
+                    COINS.add(dbCoin)
+                    getCoinsRef()?.add(dbCoin)
 
-            val user = FirebaseAuth.getInstance().currentUser
-            Log.d(tag, "Update data for ${user?.email}")
-            db.collection("Users").document(user?.email!!)
-                    .set(data, SetOptions.merge()).addOnSuccessListener {
-                        Log.d(tag, "Updated Gold Value in db")
+                    // Update fields
+                    USER.gold += coin.goldVal
+
+                    // Check if the user has already payedIn getTodaysDate() and if so if he has payIns left otherwise reset payIns
+                    if (USER.lastPayIn != getTodaysDate()) {
+                        USER.lastPayIn = getTodaysDate()
+                        USER.payInsLeft = 25
+                    } else if(USER.payInsLeft <= 0) {
+                        uiThread {
+                            mapActivity.longToast("You cannot pay in any more coins for today. Please come back tomorrow.")
+                        }
+                        return@doAsync
                     }
-                    .addOnFailureListener { exception ->
-                        Log.d(tag, "Couldn't update Gold Value in db. $exception")
+                    USER.payInsLeft --
+
+                    // Merge changes into User account in db
+//                    Tasks.await(userRef.set(USER,  SetOptions.merge()))
+
+                    // Everything was updated successfully. Display this to the user
+                    uiThread {
+                        mapActivity.longToast("Coin was payed into bank. You have ${USER.payInsLeft} pay-ins left for today")
                     }
-            val dbCoin = FirebaseCoin(coin.id, coin.goldVal)
-            userRef.collection("Coins").add(dbCoin)
-            dailyPayIns--
+
+                } catch (e: InvocationTargetException) {
+                    uiThread {
+                        mapActivity.longToast("Coin wasn't payed in. Try again later")
+                    }
+                    Log.d(tag, "Problem when paying coin into db. ${e.cause} ${e.printStackTrace()} ")
+                } catch (e: java.lang.Exception) {
+                    Log.d(tag, "${e.cause}")
+                    e.printStackTrace()
+                }
+            }
         }
     }
 
@@ -113,9 +127,7 @@ class Wallet(val mapActivity: MapActivity){
     private var rates = hashMapOf<Currency, Double>()
 
     private var coins = mutableListOf<Coin>()
-    private var goldVal: Int = 0
-
-    private var dailyPayIns: Int = 25
+    private var goldVal: Long = 0
 
     private val db = FirebaseFirestore.getInstance()
 
@@ -142,15 +154,15 @@ class Wallet(val mapActivity: MapActivity){
     }
 
     // Convert currency value to Gold value
-    fun convert(value: Double, currency: Currency): Int {
+    private fun convert(value: Double, currency: Currency): Long {
         val tag = "$baseTag [updateRates]"
-        var goldValue = 0
+        var goldValue: Long = 0
 
         // If there is no rate then we don't want to add any gold value so we goldValue stays 0.0
         if (rates[currency] == null) {
             Log.d(tag, "No rate available for currency $currency. Is it a valid currency? value of 0.0 returned")
         } else {
-            goldValue = (value * rates[currency]!!).roundToInt()    // by this point we know that rates[currency] cannot be null
+            goldValue = (value * rates[currency]!!).roundToLong()    // by this point we know that rates[currency] cannot be null
         }
         return goldValue
     }
@@ -160,6 +172,7 @@ class Wallet(val mapActivity: MapActivity){
         val tag = "$baseTag [addCoin]"
         coins.add(coin)
         coin.goldVal = convert(coin.value, coin.currency)
+        coin.collectionDate = getTodaysDate()
 
         mapActivity.alert("Congratulations you just found a coin worth ${coin.goldVal}") {
             isCancelable = false
@@ -170,7 +183,6 @@ class Wallet(val mapActivity: MapActivity){
             }
             negativeButton("Pay into Bank") {
                 mapActivity.account.payCoinIntoAccount(coin)
-                Log.d(tag, "Payed coin into bank account: $goldVal")
             }
         }.show()
     }
@@ -191,12 +203,13 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
     private var coins = mutableListOf<Coin>()
     private var wallet = Wallet(this)
-    var account = Account()
+    var account = Account(this)
 
     private val collectionRadius = 25
 
     private var db: FirebaseFirestore? = null
 
+    private var features = mutableListOf<Feature>()
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -300,17 +313,15 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         val tag = "$baseTag [downloadJson]"
 
         val baseUrl = "http://homepages.inf.ed.ac.uk/stg/coinz/"
-        val df = SimpleDateFormat("yyyy/MM/dd")  // Choose format that matches the URL
-        val date = df.format(Calendar.getInstance().time)
-        val urlStr = "$baseUrl$date/coinzmap.geojson"
+        val urlStr = "$baseUrl${Constants.getTodaysDate()}/coinzmap.geojson"
 
         doAsync {
-            Log.d(tag, "Trying to download map for date: $date")
+            Log.d(tag, "Trying to download map for date: ${getTodaysDate()}")
             try {
                 val result = URL(urlStr).readText()
                 uiThread {
                     Log.d(tag, "Successfully downloaded daily map")
-                    addMarkersFromGeoJson(result)
+                    addMarkers(result)
                     wallet.updateRates(result)
                 }
             } catch (e: Exception) {
@@ -326,14 +337,14 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     }
 
     // Get Coin properties + create and add a coin instance to the coins list
-    private fun addCoinToList(props: JsonObject, pos: LatLng, marker: Marker) {
+    private fun addCoinToList(props: JsonObject, pos: LatLng, marker: Marker, feature: Feature) {
         val tag = "$baseTag [addCoinToList]"
         try {
             val id = props.get("id").asString
             val value = props.get("value").asDouble
             val curStr = props.get("currency").asString
             val currency = Currency.valueOf(curStr)
-            val coin = Coin(id, value, currency, pos, marker)
+            val coin = Coin(id, value, currency, pos, marker, 0, getTodaysDate(), feature)
             coins.add(coin)
             Log.d(tag, "Added Coin instance to list: [id: $id, " +
                     "value: $value, currency: $curStr, location: $pos]")
@@ -343,31 +354,43 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     }
 
     // Add markers to the map and add each coin to list of coins
-    private fun addMarkersFromGeoJson(jsonStr: String) {
-        val tag = "$baseTag [addMarkersFromGeoJson]"
+    private fun addMarkers(baseJson: String) {
+        val tag = "$baseTag [addMarkers]"
+        // There is no need to fetch the user data since we have already done that during the SignIn
+        // If the user has already played to day - we load the existing map
+        if (USER.mapJson != "" && USER.lastLogin == getTodaysDate()) {
+            Log.d(tag, "Taking the already stored map")
+            addMarkersFromJson(USER.mapJson)
+        } else {
+            addMarkersFromJson(baseJson)
+        }
+    }
+
+    private fun addMarkersFromJson(jsonStr: String) {
+        val tag = "$baseTag [addMarkersFromJson]"
+
         val featureCollection = FeatureCollection.fromJson(jsonStr)
-        val features = featureCollection.features()
+        features = featureCollection.features() ?: features
+        Log.d(tag, features.toString())
 
-        features?.let { feats ->
-            for (feature in feats) {
-                if (feature.geometry() is Point) {  // We are only interested in points
-                    // Extract Point location and display marker on map
-                    val point = feature.geometry() as Point
-                    val coordinates = point.coordinates()
-                    val pos = LatLng(coordinates[1], coordinates[0])
+        for (feature in features) {
+            if (feature.geometry() is Point) {  // We are only interested in points
+                // Extract Point location and display marker on map
+                val point = feature.geometry() as Point
+                val coordinates = point.coordinates()
+                val pos = LatLng(coordinates[1], coordinates[0])
 
-                    val marker = map.addMarker(MarkerOptions().position(pos))
-                    Log.d(tag, "Added marker at $pos")
+                val marker = map.addMarker(MarkerOptions().position(pos))
+                Log.d(tag, "Added marker at $pos")
 
-                    // Create Coin instance from Point properties and add it to coins list
-                    val props = feature.properties()
-                    if (props == null) {
-                        Log.d(tag, "properties are null - no Coin instance created for location: " + pos.toString())
-                    } else {
-                        addCoinToList(props, pos, marker)
-                    }
-
+                // Create Coin instance from Point properties and add it to coins list
+                val props = feature.properties()
+                if (props == null) {
+                    Log.d(tag, "properties are null - no Coin instance created for location: " + pos.toString())
+                } else {
+                    addCoinToList(props, pos, marker, feature)
                 }
+
             }
         }
     }
@@ -414,17 +437,18 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         val tag = "$baseTag [checkCoinCollected]"
 
         Log.d(tag, "Checking if coin collected")
-        coins.removeAll { coin -> isCollected(coin, location) }
+        coins.removeAll { coin -> canBeCollected(coin, location) }
     }
 
     // Checks if a coin is close enough to be collected, if so, the coin is added to wallet and its marker is removed
-    private fun isCollected(coin: Coin, location: Location): Boolean {
+    private fun canBeCollected(coin: Coin, location: Location): Boolean {
         val tag = "$baseTag [isCollected]"
 
         val userLoc = LatLng(location.latitude, location.longitude)
         if (coin.location.distanceTo(userLoc) <= collectionRadius) {
             map.removeMarker(coin.marker)
             wallet.addCoin(coin)
+            features.remove(coin.feature)
             Log.d(tag, "Collected coin $coin and removed corresponding marker.")
             return true
         }
@@ -461,8 +485,17 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
     @SuppressWarnings("MissingPermission")  // Permission is already checked in enableLocation()
     override fun onStop() {
+        val tag = "$baseTag [onStop]"
         super.onStop()
         locationEngine?.removeLocationUpdates()
+        USER.mapJson = FeatureCollection.fromFeatures(features).toJson()
+        getUserRef()?.set(USER,  SetOptions.merge())?.addOnSuccessListener {
+                    Log.d(tag,"User Data stored in db")
+                }
+                ?.addOnFailureListener {e ->
+                    Log.d(tag,"Problem when trying to store UserData in db $e")
+                    Log.d(tag, "{${e.printStackTrace()}")
+                }
         mapView.onStop()
     }
 
