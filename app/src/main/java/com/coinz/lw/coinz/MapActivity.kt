@@ -13,7 +13,6 @@ import com.coinz.lw.coinz.Constants.Companion.getCoinsRef
 import com.coinz.lw.coinz.Constants.Companion.getTodaysDate
 import com.coinz.lw.coinz.Constants.Companion.getUserRef
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -56,9 +55,6 @@ class Account(val mapActivity: MapActivity) {
 
     private val baseTag = "ACCOUNT"
     var coins = mutableListOf<Coin>()
-
-    private var db = FirebaseFirestore.getInstance()
-    private var userEmail = FirebaseAuth.getInstance().currentUser?.email ?: ""
 
     fun payCoinIntoAccount(coin: Coin) {
         val tag = "$baseTag [addCoin]"
@@ -128,9 +124,6 @@ class Wallet(val mapActivity: MapActivity){
 
     private var coins = mutableListOf<Coin>()
     private var goldVal: Long = 0
-
-    private val db = FirebaseFirestore.getInstance()
-
 
     override fun toString(): String {
         var result = ""
@@ -207,8 +200,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
     private val collectionRadius = 25
 
-    private var db: FirebaseFirestore? = null
-
     private var features = mutableListOf<Feature>()
 
 
@@ -216,8 +207,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         val tag = "$baseTag [onCreate]"
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_map)
-
-        val db = FirebaseFirestore.getInstance()
 
         Mapbox.getInstance(this, getString(R.string.mapbox_access_token))
         mapView = findViewById(R.id.map_view)
@@ -371,7 +360,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
 
         val featureCollection = FeatureCollection.fromJson(jsonStr)
         features = featureCollection.features() ?: features
-        Log.d(tag, features.toString())
 
         for (feature in features) {
             if (feature.geometry() is Point) {  // We are only interested in points
@@ -489,6 +477,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         super.onStop()
         locationEngine?.removeLocationUpdates()
         USER.mapJson = FeatureCollection.fromFeatures(features).toJson()
+        USER.lastLogin = getTodaysDate()
         getUserRef()?.set(USER,  SetOptions.merge())?.addOnSuccessListener {
                     Log.d(tag,"User Data stored in db")
                 }

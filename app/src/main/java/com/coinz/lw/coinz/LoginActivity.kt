@@ -13,7 +13,6 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import com.coinz.lw.coinz.Constants.Companion.USER
-import com.coinz.lw.coinz.Constants.Companion.getTodaysDate
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.*
 import com.google.firebase.firestore.DocumentSnapshot
@@ -98,7 +97,7 @@ class LoginActivity : AppCompatActivity() {
      * errors are presented and no actual login attempt is made.
      */
     private fun attemptSignUp() {
-        val tag = "$baseTag [attemptLogin]"
+        val tag = "$baseTag [attemptSignUp]"
 
         // Reset errors.
         email.error = null
@@ -175,7 +174,7 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun attemptLogIn() {
-        val tag = "$baseTag [signIn]"
+        val tag = "$baseTag [attemptLogin]"
 
         // Reset errors.
         email.error = null
@@ -278,12 +277,8 @@ class LoginActivity : AppCompatActivity() {
             showProgress(true)
             doAsync {
                 try {
-                    USER = UserModel("init") // just to initialise
                     USER = Tasks.await(db.document("Users/${user.email}").get()).toObject(UserModel::class.java) ?: throw Exception("Couldn't retrieve user data from db.")
-                    USER.lastLogin = getTodaysDate()
-
                     fetchCoins()
-
                     uiThread { updateUI(alreadyRegistered) }
                 } catch (e: Exception) {
                     Log.d(tag, "Problem during the SignUp. $e ${e.cause}")
