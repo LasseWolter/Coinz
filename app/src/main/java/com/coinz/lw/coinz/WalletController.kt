@@ -2,6 +2,13 @@ package com.coinz.lw.coinz
 
 import android.app.Activity
 import android.util.Log
+import com.coinz.lw.coinz.Constants.Companion.BANK_COINS
+import com.coinz.lw.coinz.Constants.Companion.USER
+import com.coinz.lw.coinz.Constants.Companion.WALLET_COINS
+import com.coinz.lw.coinz.Constants.Companion.getBankGoldVal
+import com.coinz.lw.coinz.Constants.Companion.getTodaysDate
+import com.coinz.lw.coinz.Constants.Companion.getWalletCoinsRef
+import com.coinz.lw.coinz.Constants.Companion.getWalletGoldVal
 import com.google.gson.JsonParser
 import kotlinx.android.synthetic.main.activity_map.*
 import org.jetbrains.anko.alert
@@ -20,7 +27,7 @@ class WalletControl {
         fun payCoinIntoBank(coin: CoinModel, activity: Activity) {
             val tag = "$baseTag [payCoinIntoBank]"
             var alreadyCollected = false
-            for (colCoin in Constants.BANK_COINS) {
+            for (colCoin in  BANK_COINS) {
                 if (coin.id == colCoin.id) {
                     Log.d(tag, "A coin with this id has already been payed in. id: ${coin.id}")
                     activity.toast("You've already payed in this coin.")
@@ -36,44 +43,43 @@ class WalletControl {
         // Update USER fields
         private fun updateUser(coin: CoinModel, activity: Activity) {
             // Update local lists of Coins (Wallet and Bank)
-            Constants.BANK_COINS.add(coin)
-            Constants.WALLET_COINS.remove(coin)
+            BANK_COINS.add(coin)
+            WALLET_COINS.remove(coin)
             // The coin deletion is directly send to DB to avoid querying for which coins were deleted later
-            Constants.getWalletCoinsRef()?.document(coin.id)?.delete()
+            getWalletCoinsRef()?.document(coin.id)?.delete()
 
             // Update USER fields locally - the DB is updated in onStop()
-            Constants.USER.gold += coin.goldVal
+            USER.gold += coin.goldVal
 
             // Check if the user has already payedIn getTodaysDate() and if so if he has payIns left otherwise reset payIns
-            if (Constants.USER.lastPayIn != Constants.getTodaysDate()) {
-                Constants.USER.lastPayIn = Constants.getTodaysDate()
-                Constants.USER.payInsLeft = 25
-            } else if (Constants.USER.payInsLeft <= 0) {
+            if (USER.lastPayIn != getTodaysDate()) {
+                USER.lastPayIn = getTodaysDate()
+                USER.payInsLeft = 25
+            } else if (USER.payInsLeft <= 0) {
                 activity.longToast("You cannot pay in any more coins for today. Please come back tomorrow.")
                 return
             }
-            Constants.USER.payInsLeft--
+            USER.payInsLeft--
 
-            activity.longToast("Coin was payed into bank. You have ${Constants.USER.payInsLeft} pay-ins left for today")
+            activity.longToast("Coin was payed into bank. You have ${USER.payInsLeft} pay-ins left for today")
         }
 
         // Adds coin to the local wallet and asks if the user wants to pay it into the bank directly
         fun addCoinToWallet(coin: Coin, activity: Activity) {
             val tag = "$baseTag [addCoinToWallet]"
-
             val coinGoldVal = convert(coin.value, coin.currency)
-            val dbCoin = CoinModel(coin.id, coinGoldVal, Constants.getTodaysDate())
-            Constants.WALLET_COINS.add(dbCoin)
+            val dbCoin = CoinModel(coin.id, coinGoldVal, getTodaysDate())
 
             activity.alert("Congratulations you just found a coin worth $coinGoldVal") {
                 isCancelable = false
                 positiveButton("Continue") {
-                    val newWalletGold = Constants.getWalletGoldVal()
+                    WALLET_COINS.add(dbCoin)
+                    val newWalletGold = getWalletGoldVal()
                     activity.gold_counter.text = String.format("Wallet: %d", newWalletGold)
                     Log.d(tag, "New Wallet-Gold Value: $newWalletGold")
                 }
                 negativeButton("Pay into Bank") {
-                    val newBankGold = Constants.getBankGoldVal() + coinGoldVal
+                    val newBankGold = getBankGoldVal() + coinGoldVal
                     activity.bank_gold.text = String.format("Bank: %d", newBankGold)
                     payCoinIntoBank(dbCoin, activity)
                     Log.d(tag, "New Bank-Gold Value: $newBankGold")
@@ -91,7 +97,7 @@ class WalletControl {
             enumValues<Currency>().forEach {
                 this.rates[it] = curRates.get(it.name).asDouble
             }
-
+            Log.d(tag, "Updated Conversion rates. New rates: $rates")
         }
         // Convert currency value to Gold value
         private fun convert(value: Double, currency: Currency): Long {
