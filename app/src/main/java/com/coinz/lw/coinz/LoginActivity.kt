@@ -302,7 +302,6 @@ class LoginActivity : AppCompatActivity() {
         for (docSnap: DocumentSnapshot in walletCoinsQuery) {
             val coin = docSnap.toObject(CoinModel::class.java)
             if(coin != null) {
-                Log.d("LOGIN_ACTI", "Coin added to Wallet: $coin")
                 WALLET_COINS.add(coin)
             }
         }

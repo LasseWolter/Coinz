@@ -1,25 +1,19 @@
 package com.coinz.lw.coinz
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.location.Location
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
-import com.coinz.lw.coinz.Account.Companion.payCoinIntoAccount
-import com.coinz.lw.coinz.Constants.Companion.BANK_COINS
 import com.coinz.lw.coinz.Constants.Companion.USER
-import com.coinz.lw.coinz.Constants.Companion.WALLET_COINS
 import com.coinz.lw.coinz.Constants.Companion.getBankGoldVal
 import com.coinz.lw.coinz.Constants.Companion.getTodaysDate
-import com.coinz.lw.coinz.Constants.Companion.getWalletCoinsRef
 import com.coinz.lw.coinz.Constants.Companion.getWalletGoldVal
 import com.coinz.lw.coinz.Constants.Companion.updateDb
 import com.google.firebase.auth.FirebaseAuth
 import com.google.gson.JsonObject
-import com.google.gson.JsonParser
 import com.mapbox.android.core.location.LocationEngine
 import com.mapbox.android.core.location.LocationEngineListener
 import com.mapbox.android.core.location.LocationEnginePriority
@@ -43,7 +37,6 @@ import kotlinx.android.synthetic.main.activity_map.*
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk25.coroutines.onClick
 import java.net.URL
-import kotlin.math.roundToLong
 
 
 enum class Currency {
@@ -51,110 +44,6 @@ enum class Currency {
 }
 
 class Coin(val id: String, val value: Double, val currency: Currency, val location: LatLng, val marker: Marker, var feature: Feature? = null)
-
-// The player can pay 25 coins a day into the bank account
-class Account {
-    companion object {
-        private val baseTag = "ACCOUNT"
-        fun payCoinIntoAccount(coin: CoinModel, activity: Activity) {
-            val tag = "$baseTag [addCoin]"
-            var alreadyCollected = false
-            for (colCoin in BANK_COINS) {
-                if (coin.id == colCoin.id) {
-                    Log.d(tag, "A coin with this id has already been payed in. id: ${coin.id}")
-                    activity.toast("You've already payed in this coin.")
-                    alreadyCollected = true
-                    break
-                }
-            }
-            if (!alreadyCollected) {
-                updateUser(coin, activity)
-            }
-        }
-
-        // Update USER fields
-        private fun updateUser(coin: CoinModel, activity: Activity) {
-            // Update local lists of Coins (Wallet and Bank)
-            BANK_COINS.add(coin)
-            WALLET_COINS.remove(coin)
-            // The coin deletion is directly send to DB to avoid querying for which coins were deleted later
-            getWalletCoinsRef()?.document(coin.id)?.delete()
-
-            // Update USER fields locally - the DB is updated in onStop()
-            USER.gold += coin.goldVal
-
-            // Check if the user has already payedIn getTodaysDate() and if so if he has payIns left otherwise reset payIns
-            if (USER.lastPayIn != getTodaysDate()) {
-                USER.lastPayIn = getTodaysDate()
-                USER.payInsLeft = 25
-            } else if (USER.payInsLeft <= 0) {
-                activity.longToast("You cannot pay in any more coins for today. Please come back tomorrow.")
-                return
-            }
-            USER.payInsLeft--
-
-            activity.longToast("Coin was payed into bank. You have ${USER.payInsLeft} pay-ins left for today")
-        }
-    }
-}
-
-// The mapActivity is passed as parameter such that the UI can be updated on coin collection
-class WalletControl(val mapActivity: MapActivity) {
-    private val baseTag = "WALLET"
-    private var rates = hashMapOf<Currency, Double>()
-
-    // Update currency rates to most recent ones available
-    fun updateRates(jsonStr: String) {
-        val tag = "$baseTag [updateRates]"
-        val parser = JsonParser()
-        val obj = parser.parse(jsonStr).asJsonObject
-        val curRates = obj.get("rates").asJsonObject
-
-        enumValues<Currency>().forEach {
-            this.rates[it] = curRates.get(it.name).asDouble
-        }
-
-    }
-
-    // Convert currency value to Gold value
-    private fun convert(value: Double, currency: Currency): Long {
-        val tag = "$baseTag [updateRates]"
-        var goldValue: Long = 0
-
-        // If there is no rate then we don't want to add any gold value so we goldValue stays 0.0
-        if (rates[currency] == null) {
-            Log.d(tag, "No rate available for currency $currency. Is it a valid currency? value of 0.0 returned")
-        } else {
-            goldValue = (value * rates[currency]!!).roundToLong()    // by this point we know that rates[currency] cannot be null
-        }
-        return goldValue
-    }
-
-    // Only add coin to wallet when no coin with that id is already in the wallet
-    fun addCoin(coin: Coin) {
-        val tag = "$baseTag [addCoin]"
-
-        val coinGoldVal = convert(coin.value, coin.currency)
-        val dbCoin = CoinModel(coin.id, coinGoldVal, getTodaysDate())
-        WALLET_COINS.add(dbCoin)
-
-        mapActivity.alert("Congratulations you just found a coin worth $coinGoldVal") {
-            isCancelable = false
-            positiveButton("Continue") {
-                val newWalletGold = getWalletGoldVal()
-                mapActivity.gold_counter.text = String.format("Wallet: %d", newWalletGold)
-                Log.d(tag, "New Wallet-Gold Value: $newWalletGold")
-            }
-            negativeButton("Pay into Bank") {
-                val newBankGold = getBankGoldVal() + coinGoldVal
-                mapActivity.bank_gold.text = String.format("Bank: %d", newBankGold)
-                payCoinIntoAccount(dbCoin, mapActivity)
-                Log.d(tag, "New Bank-Gold Value: $newBankGold")
-            }
-        }.show()
-    }
-
-}
 
 class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener,
         LocationEngineListener {
@@ -169,7 +58,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     private var locationEngine: LocationEngine? = null
 
     private var coins = mutableListOf<Coin>()
-    private var wallet = WalletControl(this)
 
     private val collectionRadius = 25
 
@@ -192,6 +80,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         payIn_button.onClick {
             val walletIntent = Intent(this@MapActivity, WalletActivity::class.java)
             startActivity(walletIntent)
+            Log.d(tag, "Switched to Map- to WalletActivity")
         }
     }
 
@@ -288,7 +177,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
                 uiThread {
                     Log.d(tag, "Successfully downloaded daily map")
                     addMarkers(result)
-                    wallet.updateRates(result)
+                    WalletControl.updateRates(result)
                 }
             } catch (e: Exception) {
                 Log.d(tag, "There was a problem downloading the map: $e")
@@ -416,7 +305,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         val userLoc = LatLng(location.latitude, location.longitude)
         if (coin.location.distanceTo(userLoc) <= collectionRadius) {
             map.removeMarker(coin.marker)
-            wallet.addCoin(coin)
+            WalletControl.addCoinToWallet(coin, this)
             features.remove(coin.feature)
             Log.d(tag, "Collected coin $coin and removed corresponding marker.")
             return true
