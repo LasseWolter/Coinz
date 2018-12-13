@@ -11,6 +11,7 @@ import android.widget.ListView
 import android.widget.TextView
 import com.coinz.lw.coinz.Account.Companion.payCoinIntoAccount
 import com.coinz.lw.coinz.Constants.Companion.WALLET_COINS
+import com.coinz.lw.coinz.Constants.Companion.updateDb
 import kotlinx.android.synthetic.main.activity_wallet.*
 
 class WalletActivity: AppCompatActivity() {
@@ -33,6 +34,11 @@ class WalletActivity: AppCompatActivity() {
             payCoinIntoAccount(coinList[position], this)
             adapter.notifyDataSetChanged()
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        updateDb()
     }
 }
 

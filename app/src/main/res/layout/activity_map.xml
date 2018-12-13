@@ -23,21 +23,41 @@
 
     <TextView
         android:id="@+id/gold_counter"
+        style="@android:style/Widget.Button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        style="@android:style/Widget.Button"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
         android:layout_marginEnd="8dp"
-        android:layout_marginBottom="8dp"
-        android:paddingVertical="2dp"
-        android:paddingHorizontal="6dp"
         android:background="@color/colorPrimary"
-        android:textColor="@color/colorAccent"
-        android:text="0"
-        android:textSize="24sp"
         android:clickable="false"
-        mapbox:layout_constraintBottom_toBottomOf="parent"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:text="Wallet: 0"
+        android:textColor="@color/colorAccent"
+        android:textSize="24sp"
         mapbox:layout_constraintEnd_toEndOf="parent"
-        ></TextView>
+        mapbox:layout_constraintStart_toEndOf="@+id/bank_gold"
+        mapbox:layout_constraintTop_toTopOf="parent"></TextView>
+
+    <TextView
+        android:id="@+id/bank_gold"
+        style="@android:style/Widget.Button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="8dp"
+        android:background="@color/colorPrimary"
+        android:clickable="false"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:text="Bank: 0"
+        android:textColor="@color/colorAccent"
+        android:textSize="24sp"
+        mapbox:layout_constraintEnd_toStartOf="@+id/gold_counter"
+        mapbox:layout_constraintStart_toStartOf="parent"
+        mapbox:layout_constraintTop_toTopOf="parent"></TextView>
 
 
     <Button
@@ -54,10 +74,10 @@
         android:id="@+id/payIn_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
         android:text="Pay in"
-        mapbox:layout_constraintStart_toStartOf="parent"
-        mapbox:layout_constraintTop_toTopOf="parent" />
+        mapbox:layout_constraintBottom_toBottomOf="parent"
+        mapbox:layout_constraintEnd_toEndOf="parent" />
 
 </android.support.constraint.ConstraintLayout>

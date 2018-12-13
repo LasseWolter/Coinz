@@ -15,6 +15,8 @@ import android.widget.TextView
 import com.coinz.lw.coinz.Constants.Companion.BANK_COINS
 import com.coinz.lw.coinz.Constants.Companion.USER
 import com.coinz.lw.coinz.Constants.Companion.WALLET_COINS
+import com.coinz.lw.coinz.Constants.Companion.getBankCoinsRef
+import com.coinz.lw.coinz.Constants.Companion.getWalletCoinsRef
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.*
 import com.google.firebase.firestore.DocumentSnapshot
@@ -296,14 +298,15 @@ class LoginActivity : AppCompatActivity() {
 
     // Fetches Coins from bank (BANK and WALLET) - NEEDS to be called in asynchronous call - NOT Main Thread
     private fun fetchCoins() {
-        val walletCoinsQuery= Tasks.await(Constants.getWalletCoinsRef()?.get()!!)
+        val walletCoinsQuery= Tasks.await(getWalletCoinsRef()?.get()!!)
         for (docSnap: DocumentSnapshot in walletCoinsQuery) {
             val coin = docSnap.toObject(CoinModel::class.java)
             if(coin != null) {
+                Log.d("LOGIN_ACTI", "Coin added to Wallet: $coin")
                 WALLET_COINS.add(coin)
             }
         }
-        val bankCoinsQuery= Tasks.await(Constants.getBankCoinsRef()?.get()!!)
+        val bankCoinsQuery= Tasks.await(getBankCoinsRef()?.get()!!)
         for (docSnap: DocumentSnapshot in bankCoinsQuery) {
             val coin = docSnap.toObject(CoinModel::class.java)
             if(coin != null) {
