@@ -12,7 +12,9 @@ import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
+import com.coinz.lw.coinz.Constants.Companion.BANK_COINS
 import com.coinz.lw.coinz.Constants.Companion.USER
+import com.coinz.lw.coinz.Constants.Companion.WALLET_COINS
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.*
 import com.google.firebase.firestore.DocumentSnapshot
@@ -282,19 +284,30 @@ class LoginActivity : AppCompatActivity() {
                     uiThread { updateUI(alreadyRegistered) }
                 } catch (e: Exception) {
                     Log.d(tag, "Problem during the SignUp. $e ${e.cause}")
+                    uiThread {
+                        longToast("There was a problem. Please try again.")
+                        showProgress(false)
+                    }
                     e.printStackTrace()
                 }
             }
         }
     }
 
-    // Fetches Coins from bank - NEEDS to be called in asynchronous call - NOT Main Thread
+    // Fetches Coins from bank (BANK and WALLET) - NEEDS to be called in asynchronous call - NOT Main Thread
     private fun fetchCoins() {
-        val querySnapshots= Tasks.await(Constants.getCoinsRef()?.get()!!)
-        for (docSnap: DocumentSnapshot in querySnapshots) {
+        val walletCoinsQuery= Tasks.await(Constants.getWalletCoinsRef()?.get()!!)
+        for (docSnap: DocumentSnapshot in walletCoinsQuery) {
             val coin = docSnap.toObject(CoinModel::class.java)
             if(coin != null) {
-                Constants.COINS.add(coin)
+                WALLET_COINS.add(coin)
+            }
+        }
+        val bankCoinsQuery= Tasks.await(Constants.getBankCoinsRef()?.get()!!)
+        for (docSnap: DocumentSnapshot in bankCoinsQuery) {
+            val coin = docSnap.toObject(CoinModel::class.java)
+            if(coin != null) {
+                BANK_COINS.add(coin)
             }
         }
     }

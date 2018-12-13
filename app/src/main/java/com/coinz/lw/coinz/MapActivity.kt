@@ -1,17 +1,22 @@
 package com.coinz.lw.coinz
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Intent
 import android.location.Location
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
-import com.coinz.lw.coinz.Constants.Companion.COINS
+import com.coinz.lw.coinz.Account.Companion.payCoinIntoAccount
+import com.coinz.lw.coinz.Constants.Companion.BANK_COINS
 import com.coinz.lw.coinz.Constants.Companion.USER
-import com.coinz.lw.coinz.Constants.Companion.getCoinsRef
+import com.coinz.lw.coinz.Constants.Companion.WALLET_COINS
+import com.coinz.lw.coinz.Constants.Companion.getBankCoinsRef
 import com.coinz.lw.coinz.Constants.Companion.getTodaysDate
 import com.coinz.lw.coinz.Constants.Companion.getUserRef
+import com.coinz.lw.coinz.Constants.Companion.getWalletCoinsRef
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.SetOptions
 import com.google.gson.JsonObject
@@ -51,74 +56,70 @@ class Coin(val id: String, val value: Double, val currency: Currency, val locati
 
 // The player can pay 25 coins a day into the bank account where they are 'safe' and their value
 // doesn't decay
-class Account(val mapActivity: MapActivity) {
-
-    private val baseTag = "ACCOUNT"
-    var coins = mutableListOf<Coin>()
-
-    fun payCoinIntoAccount(coin: Coin) {
-        val tag = "$baseTag [addCoin]"
-        var alreadyCollected = false
-        for (colCoin in coins) {
-            if (coin.id == colCoin.id) {
-                Log.d(tag, "This Coin has already been collected. id: ${coin.id}")
-                alreadyCollected = true
-                break
+class Account() {
+    companion object {
+        private val baseTag = "ACCOUNT"
+        fun payCoinIntoAccount(coin: CoinModel, activity: Activity) {
+            val tag = "$baseTag [addCoin]"
+            var alreadyCollected = false
+            for (colCoin in BANK_COINS) {
+                if (coin.id == colCoin.id) {
+                    Log.d(tag, "This Coin has already been collected. id: ${coin.id}")
+                    alreadyCollected = true
+                    break
+                }
             }
-        }
 
-        if (!alreadyCollected) {
-            // Update account locally
-            coins.add(coin)
+            if (!alreadyCollected) {
+                // Update account locally
+                val dbCoin = CoinModel(coin.id, coin.goldVal, coin.collectionDate)
+                BANK_COINS.add(dbCoin)
+                WALLET_COINS.remove(dbCoin)
+                getWalletCoinsRef()?.document(dbCoin.id)?.delete()
 
-            // Update db
-            doAsync {
-                try {
-                    val dbCoin = CoinModel(coin.id, coin.goldVal, getTodaysDate())
-                    COINS.add(dbCoin)
-                    getCoinsRef()?.add(dbCoin)
+                // Update db
+                doAsync {
+                    try {
+                        // Update fields
+                        USER.gold += coin.goldVal
 
-                    // Update fields
-                    USER.gold += coin.goldVal
-
-                    // Check if the user has already payedIn getTodaysDate() and if so if he has payIns left otherwise reset payIns
-                    if (USER.lastPayIn != getTodaysDate()) {
-                        USER.lastPayIn = getTodaysDate()
-                        USER.payInsLeft = 25
-                    } else if(USER.payInsLeft <= 0) {
-                        uiThread {
-                            mapActivity.longToast("You cannot pay in any more coins for today. Please come back tomorrow.")
+                        // Check if the user has already payedIn getTodaysDate() and if so if he has payIns left otherwise reset payIns
+                        if (USER.lastPayIn != getTodaysDate()) {
+                            USER.lastPayIn = getTodaysDate()
+                            USER.payInsLeft = 25
+                        } else if (USER.payInsLeft <= 0) {
+                            uiThread {
+                                activity.longToast("You cannot pay in any more coins for today. Please come back tomorrow.")
+                            }
+                            return@doAsync
                         }
-                        return@doAsync
-                    }
-                    USER.payInsLeft --
+                        USER.payInsLeft--
 
-                    // Merge changes into User account in db
+                        // Merge changes into User account in db
 //                    Tasks.await(userRef.set(USER,  SetOptions.merge()))
 
-                    // Everything was updated successfully. Display this to the user
-                    uiThread {
-                        mapActivity.longToast("Coin was payed into bank. You have ${USER.payInsLeft} pay-ins left for today")
-                    }
+                        // Everything was updated successfully. Display this to the user
+                        uiThread {
+                            activity.longToast("Coin was payed into bank. You have ${USER.payInsLeft} pay-ins left for today")
+                        }
 
-                } catch (e: InvocationTargetException) {
-                    uiThread {
-                        mapActivity.longToast("Coin wasn't payed in. Try again later")
+                    } catch (e: InvocationTargetException) {
+                        uiThread {
+                            activity.longToast("Coin wasn't payed in. Try again later")
+                        }
+                        Log.d(tag, "Problem when paying coin into db. ${e.cause} ${e.printStackTrace()} ")
+                    } catch (e: java.lang.Exception) {
+                        Log.d(tag, "${e.cause}")
+                        e.printStackTrace()
                     }
-                    Log.d(tag, "Problem when paying coin into db. ${e.cause} ${e.printStackTrace()} ")
-                } catch (e: java.lang.Exception) {
-                    Log.d(tag, "${e.cause}")
-                    e.printStackTrace()
                 }
             }
         }
     }
-
-
 }
 
 // The mapActivity is passed as parameter such that the UI can be updated on coin collection
-class Wallet(val mapActivity: MapActivity){
+class WalletControl(val mapActivity: MapActivity) {
     private val baseTag = "WALLET"
     private var rates = hashMapOf<Currency, Double>()
 
@@ -127,7 +128,7 @@ class Wallet(val mapActivity: MapActivity){
 
     override fun toString(): String {
         var result = ""
-        coins.forEachIndexed() { i, coin ->
+        coins.forEachIndexed { i, coin ->
             result += "\n${i + 1}: ${coin.value} ${coin.currency} found at ${coin.location}"
         }
         return result
@@ -167,6 +168,9 @@ class Wallet(val mapActivity: MapActivity){
         coin.goldVal = convert(coin.value, coin.currency)
         coin.collectionDate = getTodaysDate()
 
+        val dbCoin = CoinModel(coin.id, coin.goldVal, getTodaysDate())
+        WALLET_COINS.add(dbCoin)
+
         mapActivity.alert("Congratulations you just found a coin worth ${coin.goldVal}") {
             isCancelable = false
             positiveButton("Continue") {
@@ -175,7 +179,7 @@ class Wallet(val mapActivity: MapActivity){
                 Log.d(tag, "New Wallet-Gold Value: $goldVal")
             }
             negativeButton("Pay into Bank") {
-                mapActivity.account.payCoinIntoAccount(coin)
+                payCoinIntoAccount(dbCoin, mapActivity)
             }
         }.show()
     }
@@ -195,8 +199,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
     private var locationEngine: LocationEngine? = null
 
     private var coins = mutableListOf<Coin>()
-    private var wallet = Wallet(this)
-    var account = Account(this)
+    private var wallet = WalletControl(this)
 
     private val collectionRadius = 25
 
@@ -214,6 +217,10 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         mapView.getMapAsync(this)
 
         logout_button.onClick { logout() }
+        payIn_button.onClick {
+            val walletIntent = Intent(this@MapActivity, WalletActivity::class.java)
+            startActivity(walletIntent)
+        }
     }
 
     override fun onMapReady(mapboxMap: MapboxMap?) {
@@ -478,11 +485,32 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback, PermissionsListener
         locationEngine?.removeLocationUpdates()
         USER.mapJson = FeatureCollection.fromFeatures(features).toJson()
         USER.lastLogin = getTodaysDate()
-        getUserRef()?.set(USER,  SetOptions.merge())?.addOnSuccessListener {
-                    Log.d(tag,"User Data stored in db")
+
+        // Updating the DB with USER and COIN data
+        doAsync {
+            try {
+                if (getUserRef() != null) {
+                    Tasks.await(getUserRef()!!.set(USER, SetOptions.merge()))
                 }
-                ?.addOnFailureListener {e ->
-                    Log.d(tag,"Problem when trying to store UserData in db $e")
+                // Store all coins according to their id - if there is a problem jump to next iteration
+                for (coin in WALLET_COINS) {
+                    Tasks.await(getWalletCoinsRef()?.document(coin.id)?.set(coin) ?: continue)
+                }
+                for (coin in BANK_COINS) {
+                    Tasks.await(getBankCoinsRef()?.document(coin.id)?.set(coin) ?: continue)
+                }
+                Log.d(tag, "Successfully updated USER and COIN date in db")
+            } catch (e: Exception) {
+                Log.d(tag, "Couldn't update db with USER and COIN data: $e")
+                e.printStackTrace()
+            }
+        }
+
+        getUserRef()?.set(USER, SetOptions.merge())?.addOnSuccessListener {
+            Log.d(tag, "User Data stored in db")
+        }
+                ?.addOnFailureListener { e ->
+                    Log.d(tag, "Problem when trying to store UserData in db $e")
                     Log.d(tag, "{${e.printStackTrace()}")
                 }
         mapView.onStop()

@@ -15,7 +15,8 @@ class Constants {
         // Just initialise UserModel here without an actual email address
         // During Login/SignUp this is changed to the actual user
         var USER: UserModel = UserModel("init")
-        var COINS = mutableListOf<CoinModel>()
+        var WALLET_COINS = mutableListOf<CoinModel>()
+        var BANK_COINS = mutableListOf<CoinModel>()
 
         fun getUserRef(): DocumentReference? {
             val db = FirebaseFirestore.getInstance()
@@ -23,8 +24,12 @@ class Constants {
             return db.document("Users/$userEmail")
         }
 
-        fun getCoinsRef(): CollectionReference? {
-            return getUserRef()?.collection("Coins")
+        fun getBankCoinsRef(): CollectionReference? {
+            return getUserRef()?.collection("BankCoins")
+        }
+
+        fun getWalletCoinsRef(): CollectionReference? {
+            return getUserRef()?.collection("WalletCoins")
         }
 
         @SuppressLint("SimpleDateFormat")
