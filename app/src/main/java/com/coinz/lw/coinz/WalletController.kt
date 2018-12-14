@@ -7,7 +7,6 @@ import com.coinz.lw.coinz.Constants.Companion.USER
 import com.coinz.lw.coinz.Constants.Companion.WALLET_COINS
 import com.coinz.lw.coinz.Constants.Companion.getBankGoldVal
 import com.coinz.lw.coinz.Constants.Companion.getTodaysDate
-import com.coinz.lw.coinz.Constants.Companion.getWalletCoinsRef
 import com.coinz.lw.coinz.Constants.Companion.getWalletGoldVal
 import com.google.gson.JsonParser
 import kotlinx.android.synthetic.main.activity_map.*
@@ -42,15 +41,6 @@ class WalletControl {
 
         // Update USER fields
         private fun updateUser(coin: CoinModel, activity: Activity) {
-            // Update local lists of Coins (Wallet and Bank)
-            BANK_COINS.add(coin)
-            WALLET_COINS.remove(coin)
-            // The coin deletion is directly send to DB to avoid querying for which coins were deleted later
-            getWalletCoinsRef()?.document(coin.id)?.delete()
-
-            // Update USER fields locally - the DB is updated in onStop()
-            USER.gold += coin.goldVal
-
             // Check if the user has already payedIn getTodaysDate() and if so if he has payIns left otherwise reset payIns
             if (USER.lastPayIn != getTodaysDate()) {
                 USER.lastPayIn = getTodaysDate()
@@ -59,6 +49,14 @@ class WalletControl {
                 activity.longToast("You cannot pay in any more coins for today. Please come back tomorrow.")
                 return
             }
+            // Update local lists of Coins (Wallet and Bank)
+            BANK_COINS.add(coin)
+            WALLET_COINS.remove(coin)
+            // The coin deletion is directly send to DB to avoid querying for which coins were deleted later
+            Constants.getWalletCoinsRef()?.document(coin.id)?.delete()
+
+            // Update USER fields locally - the DB is updated in onStop()
+            USER.gold += coin.goldVal
             USER.payInsLeft--
 
             activity.longToast("Coin was payed into bank. You have ${USER.payInsLeft} pay-ins left for today")
